@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "source": "github-lite.html",
+  "parts": [
+    "part-00.txt",
+    "part-01.txt"
+  ],
+  "decodedBytes": 16612,
+  "sha256": "027ab7ab3477d37d791e62693c872b6a9e53f685dfe20578b81bdb808f57a482",
+  "requiredMarkers": [
+    "COLD WAR",
+    "Agent Pipeline",
+    "Run Mission",
+    "AFTER-ACTION REVIEW"
+  ]
+}
