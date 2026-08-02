@@ -1,7 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "fluid": true,
   "cleanUrls": false,
   "trailingSlash": false,
+  "functions": {
+    "api/agent.js": {
+      "maxDuration": 120
+    },
+    "api/health.js": {
+      "maxDuration": 10
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
@@ -12,9 +21,15 @@
       ]
     },
     {
-      "source": "/bundle/(.*)",
+      "source": "/bundle-v2/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=300" }
+        { "key": "Cache-Control", "value": "public, max-age=300, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/(live-mode.js|live-access.js|live-mode.css)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
       ]
     }
   ]
