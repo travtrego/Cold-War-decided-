@@ -1,11 +1,12 @@
 {
   "name": "cold-war-decided",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "npm run verify && npm run check",
-    "verify": "node scripts/verify-bundle.mjs",
-    "check": "node --check api/agent.js && node --check api/health.js"
+    "test": "npm run verify && npm run check && npm run test:api",
+    "verify": "node scripts/verify-bundle.mjs && node scripts/verify-live-module.mjs",
+    "check": "node --check api/agent.js && node --check api/health.js && node --check live-mode.js",
+    "test:api": "node scripts/test-api.mjs"
   }
 }
