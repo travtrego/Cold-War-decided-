@@ -32,6 +32,17 @@
     if(hash!=='027ab7ab3477d37d791e62693c872b6a9e53f685dfe20578b81bdb808f57a482')throw new Error('Application integrity check failed');
     const html=new TextDecoder().decode(bytes);
     document.open();document.write(html);document.close();
+
+    const stylesheet=document.createElement('link');
+    stylesheet.rel='stylesheet';
+    stylesheet.href='/live-mode.css';
+    document.head.appendChild(stylesheet);
+
+    const liveModule=document.createElement('script');
+    liveModule.src='/live-mode.js';
+    liveModule.async=false;
+    liveModule.onerror=()=>console.error('Live AI enhancement failed to load; demo mode remains available.');
+    document.body.appendChild(liveModule);
   }catch(error){
     status.className='error';
     status.textContent='The application could not be verified. Refresh once; if this remains, the latest deployment is still propagating.';
