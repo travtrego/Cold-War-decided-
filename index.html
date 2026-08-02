@@ -4,29 +4,37 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#05090b">
+  <meta name="description" content="Cold War Decided — a visible multi-agent intelligence training simulator.">
   <title>Cold War Decided</title>
   <style>
     html,body{height:100%;margin:0;background:#05090b;color:#dce8e3;font-family:system-ui,sans-serif}
     main{height:100%;display:grid;place-items:center;text-align:center;padding:24px}
     .loader{width:min(430px,100%)}
     .mark{width:46px;height:46px;border:1px solid #426057;margin:0 auto 20px;display:grid;place-items:center;color:#9ee3c7}
-    h1{font-size:25px;letter-spacing:.08em;margin:0 0 8px}p{color:#879992;margin:0}
+    h1{font-size:25px;letter-spacing:.08em;margin:0 0 8px}p{color:#879992;margin:0;line-height:1.5}
     .bar{height:2px;background:#172326;margin-top:24px;overflow:hidden}.bar i{display:block;height:100%;width:35%;background:#9ee3c7;animation:scan 1.2s ease-in-out infinite}
+    .error{color:#d87870}.error+.bar{display:none}
     @keyframes scan{0%{transform:translateX(-110%)}100%{transform:translateX(390%)}}
   </style>
 </head>
 <body>
-<main><div class="loader"><div class="mark">//</div><h1>COLD WAR DECIDED</h1><p>Opening classified training system…</p><div class="bar"><i></i></div></div></main>
+<main><div class="loader"><div class="mark">//</div><h1>COLD WAR DECIDED</h1><p id="status">Opening classified training system…</p><div class="bar"><i></i></div></div></main>
 <script>
 (async()=>{
+  const status=document.getElementById('status');
   try{
-    const paths=['bundle/part-00.txt','bundle/part-01.txt','bundle/part-02.txt','bundle/part-03.txt'];
-    const parts=await Promise.all(paths.map(path=>fetch(path,{cache:'no-store'}).then(response=>{if(!response.ok)throw new Error(path);return response.text()})));
-    const bytes=Uint8Array.from(atob(parts.join('')),character=>character.charCodeAt(0));
+    const paths=['bundle-v2/part-00.txt','bundle-v2/part-01.txt'];
+    const parts=await Promise.all(paths.map(path=>fetch(path,{cache:'no-store'}).then(response=>{if(!response.ok)throw new Error(`Missing ${path}`);return response.text()})));
+    const encoded=parts.join('').replace(/\s+/g,'');
+    const bytes=Uint8Array.from(atob(encoded),character=>character.charCodeAt(0));
+    const hashBuffer=await crypto.subtle.digest('SHA-256',bytes);
+    const hash=[...new Uint8Array(hashBuffer)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
+    if(hash!=='027ab7ab3477d37d791e62693c872b6a9e53f685dfe20578b81bdb808f57a482')throw new Error('Application integrity check failed');
     const html=new TextDecoder().decode(bytes);
     document.open();document.write(html);document.close();
   }catch(error){
-    document.querySelector('p').textContent='The application bundle could not be loaded. Refresh the page.';
+    status.className='error';
+    status.textContent='The application could not be verified. Refresh once; if this remains, the latest deployment is still propagating.';
     console.error(error);
   }
 })();
