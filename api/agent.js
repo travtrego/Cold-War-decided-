@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'node:crypto';
+
 const ALLOWED_STAGES = new Set([
   'specialist_initial',
   'chief_feedback',
@@ -8,6 +10,7 @@ const ALLOWED_STAGES = new Set([
 
 const MAX_DOSSIER_CHARS = 40_000;
 const MAX_CONTEXT_CHARS = 80_000;
+const MAX_ACCESS_CODE_CHARS = 256;
 
 const REPORT_SCHEMA = {
   type: 'object',
@@ -43,7 +46,7 @@ const REPORT_SCHEMA = {
       items: { type: 'string' },
       maxItems: 12,
     },
-    recommended_action: { type: ['string', 'null'] },
+    recommended_action: { type: 'string' },
     feedback_requests: {
       type: 'array',
       items: { type: 'string' },
@@ -65,6 +68,27 @@ function text(value, maxLength) {
   return value.slice(0, maxLength);
 }
 
+function headerValue(request, name) {
+  const value = request.headers?.[name];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function accessCodeMatches(request) {
+  const expected = process.env.LIVE_AI_ACCESS_CODE || '';
+  const provided = text(
+    headerValue(request, 'x-live-ai-access-code'),
+    MAX_ACCESS_CODE_CHARS,
+  );
+
+  if (!expected || !provided) return false;
+
+  const expectedBytes = Buffer.from(expected);
+  const providedBytes = Buffer.from(provided);
+  if (expectedBytes.length !== providedBytes.length) return false;
+
+  return timingSafeEqual(expectedBytes, providedBytes);
+}
+
 function buildInstructions(stage, role) {
   const common = [
     'You are operating inside a fictional Cold War intelligence training simulator.',
@@ -72,6 +96,7 @@ function buildInstructions(stage, role) {
     'Do not invent access to other agent silos, classified databases, or external facts.',
     'Distinguish observations from inference and calibrate confidence honestly.',
     'Return concise, auditable reasoning summaries rather than private chain-of-thought.',
+    'Use an empty string for recommended_action when the current stage should not recommend a player action.',
   ];
 
   const stageInstructions = {
@@ -110,10 +135,17 @@ export default async function handler(request, response) {
     return jsonResponse(response, 405, { error: 'Method not allowed.' });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY || !process.env.LIVE_AI_ACCESS_CODE) {
     return jsonResponse(response, 503, {
-      error: 'Live AI is not configured.',
-      code: 'OPENAI_API_KEY_MISSING',
+      error: 'Live AI is not fully configured.',
+      code: 'LIVE_AI_NOT_CONFIGURED',
+    });
+  }
+
+  if (!accessCodeMatches(request)) {
+    return jsonResponse(response, 401, {
+      error: 'Live AI access denied.',
+      code: 'ACCESS_DENIED',
     });
   }
 
@@ -164,7 +196,8 @@ export default async function handler(request, response) {
           format: {
             type: 'json_schema',
             name: 'cold_war_agent_report',
-            description: 'A structured, auditable report from one stage of the intelligence pipeline.',
+            description:
+              'A structured, auditable report from one stage of the intelligence pipeline.',
             strict: true,
             schema: REPORT_SCHEMA,
           },
