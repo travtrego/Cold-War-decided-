@@ -38,11 +38,20 @@
     stylesheet.href='/live-mode.css';
     document.head.appendChild(stylesheet);
 
-    const liveModule=document.createElement('script');
-    liveModule.src='/live-mode.js';
-    liveModule.async=false;
-    liveModule.onerror=()=>console.error('Live AI enhancement failed to load; demo mode remains available.');
-    document.body.appendChild(liveModule);
+    const loadLiveModule=()=>{
+      const liveModule=document.createElement('script');
+      liveModule.src='/live-mode.js';
+      liveModule.async=false;
+      liveModule.onerror=()=>console.error('Live AI enhancement failed to load; demo mode remains available.');
+      document.body.appendChild(liveModule);
+    };
+
+    const accessGuard=document.createElement('script');
+    accessGuard.src='/live-access.js';
+    accessGuard.async=false;
+    accessGuard.onload=loadLiveModule;
+    accessGuard.onerror=()=>console.error('Live AI access guard failed to load; Live AI remains disabled.');
+    document.body.appendChild(accessGuard);
   }catch(error){
     status.className='error';
     status.textContent='The application could not be verified. Refresh once; if this remains, the latest deployment is still propagating.';
