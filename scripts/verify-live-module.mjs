@@ -71,7 +71,7 @@ const requiredLiveMarkers = [
   "stage: 'specialist_revision'",
   "stage: 'counterintelligence'",
   "stage: 'chief_final'",
-  'cold-war-pipeline-v2',
+  'cold-war-pipeline-v3-evidence-discipline',
 ];
 
 for (const marker of requiredLiveMarkers) {

@@ -12,7 +12,7 @@ const ALLOWED_STAGES = new Set([
 const MAX_DOSSIER_CHARS = 40_000;
 const MAX_CONTEXT_CHARS = 80_000;
 const MAX_ACCESS_CODE_CHARS = 256;
-const PROMPT_VERSION = 'cold-war-pipeline-v2';
+const PROMPT_VERSION = 'cold-war-pipeline-v3-evidence-discipline';
 const PRICE_PER_MILLION = { input: 0.25, output: 2.0 };
 
 const REPORT_SCHEMA = {
@@ -28,17 +28,29 @@ const REPORT_SCHEMA = {
     'rationale',
     'recommended_action',
     'feedback_requests',
+    'observations',
+    'inferences',
+    'assumptions',
+    'alternative_hypotheses',
+    'confidence_basis',
+    'confidence_change',
   ],
   properties: {
     stage: { type: 'string' },
     role: { type: 'string' },
     conclusion: { type: 'string' },
     confidence: { type: 'integer', minimum: 0, maximum: 100 },
-    evidence_used: { type: 'array', items: { type: 'string' }, maxItems: 12 },
+    evidence_used: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 12 },
     uncertainties: { type: 'array', items: { type: 'string' }, maxItems: 8 },
     rationale: { type: 'array', items: { type: 'string' }, maxItems: 12 },
     recommended_action: { type: 'string' },
     feedback_requests: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+    observations: { type: 'array', items: { type: 'string' }, maxItems: 10 },
+    inferences: { type: 'array', items: { type: 'string' }, maxItems: 10 },
+    assumptions: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+    alternative_hypotheses: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 5 },
+    confidence_basis: { type: 'string' },
+    confidence_change: { type: 'string' },
   },
 };
 
@@ -60,7 +72,10 @@ function buildInstructions(stage, role) {
     'You are operating inside a fictional Cold War intelligence training simulator.',
     'Use only the evidence and structured context supplied in this request.',
     'Do not invent access to other agent silos, classified databases, or external facts.',
-    'Distinguish observations from inference and calibrate confidence honestly.',
+    'Place direct supplied facts only in observations; place interpretations only in inferences; place unsupported dependencies only in assumptions.',
+    'Every evidence_used entry must begin with its supplied [p. N] page citation when available, otherwise a concise [source] label from the dossier.',
+    'Provide at least two genuinely competing hypotheses, including the strongest innocent or non-hostile explanation.',
+    'Explain what evidence sets the confidence level. Never treat confidence as a quality score.',
     'Return concise, auditable reasoning summaries rather than private chain-of-thought.',
     'Keep every string concise so the entire JSON response fits within the output limit.',
     'Use an empty string for recommended_action when the current stage should not recommend a player action.',
@@ -77,11 +92,11 @@ function buildInstructions(stage, role) {
   };
 
   const stageInstructions = {
-    specialist_initial: 'Produce an independent initial report from your assigned evidence silo. Do not infer what other specialists may have seen.',
-    chief_feedback: 'Act as the Chief Agent. Review the supplied initial report and identify focused questions or corrections for exactly one revision round.',
-    specialist_revision: 'Revise the specialist report once in response to the Chief feedback. Preserve unresolved uncertainty rather than forcing agreement.',
+    specialist_initial: 'Produce an independent initial report from your assigned evidence silo. Do not infer what other specialists may have seen. Set confidence_change to "Initial estimate; no prior estimate."',
+    chief_feedback: 'Act as the Chief Agent. Review the supplied initial report. Challenge unsupported claims, missing citations, weak alternatives, hidden assumptions, and confidence calibration. Identify focused corrections for exactly one revision round.',
+    specialist_revision: 'Revise the specialist report once in response to the Chief feedback. Preserve unresolved uncertainty rather than forcing agreement. In confidence_change, state the earlier and revised confidence and cite the exact evidence or correction that caused any change; if unchanged, explain why.',
     counterintelligence: 'Act as Counterintelligence. Red-team the revised reports for deception, source dependency, contamination, groupthink, contradictions, and innocent alternatives.',
-    chief_final: 'Act as the Chief Agent. Read the Counterintelligence review before forming an independent final synthesis, confidence score, and one recommended player action.',
+    chief_final: 'Act as the Chief Agent. Read Counterintelligence before forming an independent final synthesis and one recommended player action. Preserve meaningful dissent. In confidence_change, explain which revised-report or Counterintelligence evidence raised, lowered, or preserved confidence.',
   };
 
   return [...common, `Assigned role: ${role}.`, roleDoctrines[role] || roleDoctrines['Chief Agent'], stageInstructions[stage]].join('\n');
@@ -190,7 +205,7 @@ export default async function handler(request, response) {
   try {
     const started = Date.now();
     let retries = 0;
-    let payload = await requestReport({ stage, role, input, maxOutputTokens: 2200 });
+    let payload = await requestReport({ stage, role, input, maxOutputTokens: 3200 });
     let report;
 
     try {

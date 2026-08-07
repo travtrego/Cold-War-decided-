@@ -130,7 +130,10 @@
   function renderFinal(report) {
     finalConfidence.textContent = `${Math.max(0, Math.min(100, Number(report.confidence) || 0))}%`;
     finalConclusion.textContent = report.conclusion || 'Final assessment unavailable';
-    finalAssessment.textContent = (report.rationale || []).join(' ') || 'The Chief supplied no narrative summary.';
+    const rationale = (report.rationale || []).join(' ') || 'The Chief supplied no narrative summary.';
+    finalAssessment.textContent = report.confidence_change
+      ? `${rationale} Confidence change: ${report.confidence_change}`
+      : rationale;
     finalLists[0].innerHTML = (report.evidence_used || []).slice(0, 6).map((item) => `<li>${escapeHtml(item)}</li>`).join('') || '<li>No supporting findings returned.</li>';
     finalLists[1].innerHTML = (report.uncertainties || []).slice(0, 6).map((item) => `<li>${escapeHtml(item)}</li>`).join('') || '<li>No uncertainty statement returned.</li>';
     finalRecommendation.textContent = report.recommended_action || 'Continue monitoring.';
@@ -251,7 +254,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          promptVersion: 'cold-war-pipeline-v2',
+          promptVersion: 'cold-war-pipeline-v3-evidence-discipline',
           dossierManifest: DOSSIERS.map((_, index) => ({
             silo: A[index][1],
             sourceType: currentScenario ? 'pdf_extracted' : 'embedded_text',

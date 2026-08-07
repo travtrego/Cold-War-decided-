@@ -17,6 +17,6 @@ export default function handler(request, response) {
     database: databaseConfigured,
     accessProtected: true,
     model: process.env.OPENAI_MODEL || 'gpt-5-mini',
-    promptVersion: 'cold-war-pipeline-v2',
+    promptVersion: 'cold-war-pipeline-v3-evidence-discipline',
   });
 }

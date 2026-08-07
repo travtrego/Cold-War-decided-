@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "migrate": "node scripts/migrate.mjs",
-    "test": "npm run verify && npm run check && npm run test:api",
+    "test": "npm run verify && npm run check && npm run test:api && npm run test:evaluator",
     "verify": "node scripts/verify-bundle.mjs && node scripts/verify-live-module.mjs && node scripts/verify-scenario-pdfs.mjs",
     "check": "node --check api/agent.js && node --check api/health.js && node --check api/missions.js && node --check api/mission.js && node --check api/evaluate.js && node --check api/scenario.js && node --check live-access.js && node --check live-mode.js",
-    "test:api": "node scripts/test-api.mjs"
+    "test:api": "node scripts/test-api.mjs",
+    "test:evaluator": "node scripts/test-evaluator.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

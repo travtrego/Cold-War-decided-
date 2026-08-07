@@ -1,33 +1,72 @@
 import { requireAccess } from './_auth.js';
 import { getSql, id, safeJson } from './_db.js';
 
-const VERSION = 'rule-evaluator-v1';
+const VERSION = 'rule-evaluator-v2-evidence-discipline';
 const clamp = (n) => Math.max(0, Math.min(100, Math.round(n)));
 
-function evaluate(reports) {
+const BENCHMARKS = {
+  'operation-northern-glass.pdf': [
+    ['contact loss', 'lost contact', 'tracking error', 'terrain masking'],
+    ['source dependency', 'same source', 'same briefing', 'contamination'],
+    ['payload uncertain', 'pods', 'sensors or weapons', 'unidentified'],
+    ['cable', 'seabed', 'acoustic array', 'sensor interference'],
+    ['overreact', 'deception', 'visible exercise', 'non-hostile'],
+  ],
+  'operation-amber-circuit.pdf': [
+    ['walk-in', 'unverified', 'requests money', 'source reliability'],
+    ['backup circuit', 'exercise inject', 'operator error', 'spoofing'],
+    ['no known ballistic', 'no ballistic missiles', 'signals-intelligence submarine'],
+    ['inspection', 'communications failures', 'readiness drill'],
+    ['cargo unknown', 'cannot identify', 'passengers or equipment'],
+  ],
+  'operation-copper-lantern.pdf': [
+    ['controlled leak', 'double agent', 'deception', 'counterintelligence trap'],
+    ['defective sonar', 'returning equipment', 'technology transfer'],
+    ['radar gap', 'equipment cooling', 'scheduled handoff', 'concealment'],
+    ['weight uncertainty', 'wind uncertainty', 'departed lighter'],
+    ['no direct track', 'helicopter', 'unconnected'],
+  ],
+};
+
+export function evaluate(reports, filename = '') {
   const parsed = reports.map((row) => row.report);
   const revisions = reports.filter((row) => row.stage === 'specialist_revision');
   const initials = reports.filter((row) => row.stage === 'specialist_initial');
-  const ci = parsed.find((r) => r.stage === 'counterintelligence');
-  const final = parsed.find((r) => r.stage === 'chief_final');
+  const ci = reports.find((row) => row.stage === 'counterintelligence')?.report;
+  const final = reports.find((row) => row.stage === 'chief_final')?.report;
   const evidence = parsed.flatMap((r) => r.evidence_used || []);
   const uncertainty = parsed.flatMap((r) => r.uncertainties || []);
   const confidence = parsed.map((r) => Number(r.confidence)).filter(Number.isFinite);
+  const citedEvidence = evidence.filter((item) => /^\[(?:p\.\s*\d+|source)/i.test(item));
+  const citationRate = evidence.length ? citedEvidence.length / evidence.length : 0;
+  const structured = parsed.filter((r) => Array.isArray(r.observations) && Array.isArray(r.inferences) && Array.isArray(r.assumptions));
+  const alternatives = parsed.filter((r) => (r.alternative_hypotheses || []).length >= 2);
+  const confidenceExplained = parsed.filter((r) => r.confidence_basis && r.confidence_change);
+  const coverage = (count) => parsed.length ? count / parsed.length : 0;
+  const benchmark = BENCHMARKS[String(filename).toLowerCase()];
+  const benchmarkText = JSON.stringify({ counterintelligence: ci, final }).toLowerCase();
+  const benchmarkHits = benchmark?.filter((alternatives) => alternatives.some((term) => benchmarkText.includes(term))) || [];
   const scores = {
-    evidence_use: clamp(45 + evidence.length * 2),
+    evidence_use: clamp(30 + citationRate * 60 + Math.min(10, evidence.length)),
     specialization: clamp(40 + new Set(reports.slice(0, 12).map((r) => r.role)).size * 12),
-    calibration: clamp(45 + uncertainty.length * 2 - confidence.filter((n) => n > 90).length * 8),
-    contradiction_detection: clamp(35 + (ci?.rationale?.length || 0) * 8 + (ci?.uncertainties?.length || 0) * 5),
-    clarity: clamp(55 + parsed.filter((r) => r.conclusion && r.rationale?.length).length * 3),
-    revision_quality: clamp(30 + revisions.length * 12 + Math.min(initials.length, revisions.length) * 5),
-    independence: clamp(45 + new Set(initials.map((r) => r.role)).size * 10 + (final ? 10 : 0)),
+    calibration: clamp(25 + uncertainty.length + coverage(confidenceExplained.length) * 55 - confidence.filter((n) => n > 90).length * 8),
+    contradiction_detection: clamp(25 + (ci?.rationale?.length || 0) * 7 + (ci?.alternative_hypotheses?.length || 0) * 10),
+    clarity: clamp(25 + coverage(structured.length) * 55 + parsed.filter((r) => r.conclusion && r.rationale?.length).length),
+    revision_quality: clamp(25 + revisions.length * 10 + revisions.filter((r) => r.report.confidence_change && r.report.alternative_hypotheses?.length >= 2).length * 8),
+    independence: clamp(30 + new Set(initials.map((r) => r.role)).size * 10 + coverage(alternatives.length) * 30),
   };
+  if (benchmark) scores.benchmark_coverage = clamp(benchmarkHits.length / benchmark.length * 100);
   const overall = clamp(Object.values(scores).reduce((a, b) => a + b, 0) / Object.keys(scores).length);
   const findings = [
     `${reports.length}/14 expected pipeline reports were preserved.`,
     revisions.length === 4 ? 'All four controlled revisions are present.' : 'One or more controlled revisions are missing.',
     ci && final ? 'Counterintelligence precedes the final synthesis.' : 'Red-team or final synthesis evidence is incomplete.',
+    `${Math.round(citationRate * 100)}% of evidence entries carry a page or source citation.`,
+    `${structured.length}/${parsed.length || 14} reports separate observations, inferences, and assumptions.`,
+    `${alternatives.length}/${parsed.length || 14} reports include at least two competing hypotheses.`,
+    `${confidenceExplained.length}/${parsed.length || 14} reports explain confidence and any change.`,
   ];
+  if (benchmark) findings.push(`${benchmarkHits.length}/${benchmark.length} scenario-specific reasoning traps were addressed by Counterintelligence or the final Chief.`);
   return { scores, overall, findings };
 }
 
@@ -39,7 +78,9 @@ export default async function handler(request, response) {
   try {
     const sql = getSql();
     const reports = await sql`SELECT stage, role, sequence, report FROM reports WHERE mission_id = ${missionId} ORDER BY sequence`;
-    const result = evaluate(reports);
+    const missions = await sql`SELECT dossier_manifest FROM missions WHERE id = ${missionId}`;
+    const filename = missions[0]?.dossier_manifest?.[0]?.filename || '';
+    const result = evaluate(reports, filename);
     await sql`INSERT INTO evaluations (id, mission_id, evaluator_version, scores, overall_score, findings)
       VALUES (${id('eval')}, ${missionId}, ${VERSION}, ${safeJson(result.scores)}::jsonb, ${result.overall}, ${safeJson(result.findings)}::jsonb)
       ON CONFLICT (mission_id) DO UPDATE SET evaluator_version = EXCLUDED.evaluator_version, scores = EXCLUDED.scores,

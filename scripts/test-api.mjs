@@ -143,11 +143,17 @@ try {
     role: 'Submarine Analyst',
     conclusion: 'The contact probably entered an ultra-quiet operating mode.',
     confidence: 68,
-    evidence_used: ['The contact disappeared without distress indicators.'],
+    evidence_used: ['[source] The contact disappeared without distress indicators.'],
     uncertainties: ['Terrain masking cannot be excluded.'],
     rationale: ['The observed silence is deliberate but not uniquely diagnostic.'],
     recommended_action: '',
     feedback_requests: [],
+    observations: ['The contact disappeared without distress indicators.'],
+    inferences: ['Quiet operation is plausible.'],
+    assumptions: ['The tracking system remained functional.'],
+    alternative_hypotheses: ['Ultra-quiet operation', 'Terrain masking or tracking error'],
+    confidence_basis: 'The disappearance is real but not uniquely diagnostic.',
+    confidence_change: 'Initial estimate; no prior estimate.',
   };
 
   globalThis.fetch = async (url, options) => {
