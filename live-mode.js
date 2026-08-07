@@ -254,7 +254,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          promptVersion: 'cold-war-pipeline-v3-evidence-discipline',
+          promptVersion: 'cold-war-pipeline-v4-decisive-chief',
           dossierManifest: DOSSIERS.map((_, index) => ({
             silo: A[index][1],
             sourceType: currentScenario ? 'pdf_extracted' : 'embedded_text',

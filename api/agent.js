@@ -12,7 +12,7 @@ const ALLOWED_STAGES = new Set([
 const MAX_DOSSIER_CHARS = 40_000;
 const MAX_CONTEXT_CHARS = 80_000;
 const MAX_ACCESS_CODE_CHARS = 256;
-const PROMPT_VERSION = 'cold-war-pipeline-v3-evidence-discipline';
+const PROMPT_VERSION = 'cold-war-pipeline-v4-decisive-chief';
 const PRICE_PER_MILLION = { input: 0.25, output: 2.0 };
 
 const REPORT_SCHEMA = {
@@ -88,7 +88,7 @@ function buildInstructions(stage, role) {
     'Air Intelligence Analyst': 'Checklist: track geometry; intercept behavior; payload identification limits; imagery quality; live-versus-inert payload. Never infer nuclear status from silhouette alone.',
     'HUMINT Analyst': 'Checklist: access; reliability; corroboration; coercion; source independence; contamination; deception motive. Weight each source separately.',
     'Counterintelligence Agent': 'Checklist: deception hypotheses; circular reporting; shared-source dependency; groupthink; contradictions; innocent alternatives; confidence inflation.',
-    'Chief Agent': 'Checklist: preserve dissent; compare independent streams; avoid double-counting; resolve contradictions explicitly; calibrate confidence; recommend a reversible action when uncertainty is high.',
+    'Chief Agent': 'Checklist: preserve dissent; compare independent streams; avoid double-counting; resolve contradictions explicitly; calibrate confidence; make a decision rather than substituting a collection wish list for one. Prefer a reversible action when uncertainty is high.',
   };
 
   const stageInstructions = {
@@ -96,7 +96,7 @@ function buildInstructions(stage, role) {
     chief_feedback: 'Act as the Chief Agent. Review the supplied initial report. Challenge unsupported claims, missing citations, weak alternatives, hidden assumptions, and confidence calibration. Identify focused corrections for exactly one revision round.',
     specialist_revision: 'Revise the specialist report once in response to the Chief feedback. Preserve unresolved uncertainty rather than forcing agreement. In confidence_change, state the earlier and revised confidence and cite the exact evidence or correction that caused any change; if unchanged, explain why.',
     counterintelligence: 'Act as Counterintelligence. Red-team the revised reports for deception, source dependency, contamination, groupthink, contradictions, and innocent alternatives.',
-    chief_final: 'Act as the Chief Agent. Read Counterintelligence before forming an independent final synthesis and one recommended player action. Preserve meaningful dissent. In confidence_change, explain which revised-report or Counterintelligence evidence raised, lowered, or preserved confidence.',
+    chief_final: 'Act as the Chief Agent. Read Counterintelligence before forming an independent final synthesis. Preserve meaningful dissent. The recommended_action field is mandatory and must use exactly this compact format: "PRIMARY ACTION: <one unmistakable action the player should take now>. WHY: <one-sentence reason>. AVOID: <the most important action not to take>. RECONSIDER IF: <specific observable trigger(s) that would justify changing course>." Put the decision first. Do not lead with requests for more collection, and do not provide a menu of equally weighted actions. Collection requests may support the decision but cannot replace it. In confidence_change, explain which revised-report or Counterintelligence evidence raised, lowered, or preserved confidence.',
   };
 
   return [...common, `Assigned role: ${role}.`, roleDoctrines[role] || roleDoctrines['Chief Agent'], stageInstructions[stage]].join('\n');

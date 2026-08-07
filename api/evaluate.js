@@ -1,7 +1,7 @@
 import { requireAccess } from './_auth.js';
 import { getSql, id, safeJson } from './_db.js';
 
-const VERSION = 'rule-evaluator-v2-evidence-discipline';
+const VERSION = 'rule-evaluator-v3-decision-quality';
 const clamp = (n) => Math.max(0, Math.min(100, Math.round(n)));
 
 const BENCHMARKS = {
@@ -46,6 +46,11 @@ export function evaluate(reports, filename = '') {
   const benchmark = BENCHMARKS[String(filename).toLowerCase()];
   const benchmarkText = JSON.stringify({ counterintelligence: ci, final }).toLowerCase();
   const benchmarkHits = benchmark?.filter((alternatives) => alternatives.some((term) => benchmarkText.includes(term))) || [];
+  const recommendation = String(final?.recommended_action || '');
+  const clearDecision = /^PRIMARY ACTION:\s*\S/i.test(recommendation)
+    && /\bWHY:\s*\S/i.test(recommendation)
+    && /\bAVOID:\s*\S/i.test(recommendation)
+    && /\bRECONSIDER IF:\s*\S/i.test(recommendation);
   const scores = {
     evidence_use: clamp(30 + citationRate * 60 + Math.min(10, evidence.length)),
     specialization: clamp(40 + new Set(reports.slice(0, 12).map((r) => r.role)).size * 12),
@@ -54,6 +59,7 @@ export function evaluate(reports, filename = '') {
     clarity: clamp(25 + coverage(structured.length) * 55 + parsed.filter((r) => r.conclusion && r.rationale?.length).length),
     revision_quality: clamp(25 + revisions.length * 10 + revisions.filter((r) => r.report.confidence_change && r.report.alternative_hypotheses?.length >= 2).length * 8),
     independence: clamp(30 + new Set(initials.map((r) => r.role)).size * 10 + coverage(alternatives.length) * 30),
+    decision_quality: clearDecision ? 100 : 20,
   };
   if (benchmark) scores.benchmark_coverage = clamp(benchmarkHits.length / benchmark.length * 100);
   const overall = clamp(Object.values(scores).reduce((a, b) => a + b, 0) / Object.keys(scores).length);
@@ -65,6 +71,9 @@ export function evaluate(reports, filename = '') {
     `${structured.length}/${parsed.length || 14} reports separate observations, inferences, and assumptions.`,
     `${alternatives.length}/${parsed.length || 14} reports include at least two competing hypotheses.`,
     `${confidenceExplained.length}/${parsed.length || 14} reports explain confidence and any change.`,
+    clearDecision
+      ? 'The Chief gives one explicit primary action, rationale, avoided action, and reconsideration triggers.'
+      : 'The Chief recommendation is not decision-ready; it must state one primary action, rationale, avoided action, and reconsideration triggers.',
   ];
   if (benchmark) findings.push(`${benchmarkHits.length}/${benchmark.length} scenario-specific reasoning traps were addressed by Counterintelligence or the final Chief.`);
   return { scores, overall, findings };
