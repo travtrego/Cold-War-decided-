@@ -12,6 +12,9 @@
     },
     "api/evaluate.js": {
       "maxDuration": 30
+    },
+    "api/scenario.js": {
+      "maxDuration": 120
     }
   },
   "headers": [

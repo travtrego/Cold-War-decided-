@@ -1,5 +1,5 @@
 (() => {
-  const DOSSIERS = [
+  let DOSSIERS = [
     `SOURCE: NATO SOSUS and patrol contact logs.\n- Soviet attack submarine deviated from its normal patrol route and proceeded slowly toward a strategic NATO submarine base.\n- It stopped near the edge of NATO-controlled waters, then disappeared from sonar.\n- No explosion, distress traffic, debris, or emergency surfacing was detected.\n- Plausible mechanisms include ultra-quiet mode, depth change, terrain masking, or tracking error.\n- You have no access to radar, aircraft, or HUMINT reporting.`,
     `SOURCE: Ground-based ELINT intercepts and historical emitter library.\n- A normally dormant Soviet ground system activated a fire-control-like radar mode at random times across several days.\n- Bursts switched on and off without a sustained target lock.\n- Signal parameters partly match the known system but include an unfamiliar timing pattern.\n- Historical records show no identical operational sequence.\n- You have no access to submarine, aircraft, or HUMINT reporting.`,
     `SOURCE: AWACS track data and NATO reconnaissance photography.\n- An experimental aircraft made deep penetration into NATO airspace, used erratic course changes, and turned back before interception.\n- Photographs show an unfamiliar externally mounted object with a silhouette resembling a nuclear warhead family.\n- The aircraft profile looks deliberate rather than navigationally accidental.\n- The payload identity and live status are unconfirmed hypotheses, not facts.\n- You have no access to submarine, radar, or HUMINT reporting.`,
@@ -12,6 +12,7 @@
   let liveAvailable = false;
   let liveAbort = null;
   let activeMission = null;
+  let currentScenario = null;
 
   const controls = q('.controls');
   const modeSwitch = document.createElement('div');
@@ -33,11 +34,28 @@
   historyButton.textContent = 'Run History';
   controls.insertBefore(historyButton, resetButton);
 
+  const uploadButton = document.createElement('button');
+  uploadButton.className = 'btn scenario-upload';
+  uploadButton.type = 'button';
+  uploadButton.textContent = 'Load Scenario PDF';
+  controls.insertBefore(uploadButton, historyButton);
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'application/pdf,.pdf';
+  fileInput.hidden = true;
+  document.body.appendChild(fileInput);
+
   const review = document.createElement('dialog');
   review.className = 'run-review';
   review.innerHTML = '<header><b>MISSION RUN HISTORY</b><button type="button" aria-label="Close">Ã—</button></header><div class="review-body"><p>Loading mission ledgerâ€¦</p></div>';
   document.body.appendChild(review);
   review.querySelector('header button').onclick = () => review.close();
+
+  const scenarioReview = document.createElement('dialog');
+  scenarioReview.className = 'run-review scenario-review';
+  scenarioReview.innerHTML = '<header><b>NEW PDF SCENARIO</b><button type="button" aria-label="Close">Ã—</button></header><div class="review-body"><p>Select a scenario PDF.</p></div>';
+  document.body.appendChild(scenarioReview);
+  scenarioReview.querySelector('header button').onclick = () => scenarioReview.close();
 
   const finalCard = q('#final');
   const finalConfidence = finalCard.querySelector('.confidence');
@@ -125,6 +143,83 @@
     return body;
   }
 
+  function fileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('The PDF could not be read.'));
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function showScenarioPicker() {
+    if (!scenarioReview.open) scenarioReview.showModal();
+    const body = scenarioReview.querySelector('.review-body');
+    const samples = [
+      ['Operation Northern Glass', '/output/pdf/operation-northern-glass.pdf'],
+      ['Operation Amber Circuit', '/output/pdf/operation-amber-circuit.pdf'],
+      ['Operation Copper Lantern', '/output/pdf/operation-copper-lantern.pdf'],
+    ];
+    body.innerHTML = `<h2>Start a mission from PDF</h2><p>Choose your own text-based PDF (3 MB maximum), or load one of the verified scenarios.</p>
+      <button class="btn choose-pdf" type="button">Choose PDF from device</button>
+      <div class="sample-pdfs">${samples.map(([name, url]) => `<button class="btn" type="button" data-pdf="${url}">${name}</button>`).join('')}</div>`;
+    body.querySelector('.choose-pdf').onclick = () => fileInput.click();
+    body.querySelectorAll('[data-pdf]').forEach((button) => {
+      button.onclick = async () => {
+        try {
+          const response = await fetch(button.dataset.pdf);
+          if (!response.ok) throw new Error('Sample PDF could not be loaded.');
+          const blob = await response.blob();
+          await ingestScenario(new File([blob], button.dataset.pdf.split('/').pop(), { type: 'application/pdf' }));
+        } catch (error) {
+          body.innerHTML = `<p class="live-error">${escapeHtml(error.message)}</p>`;
+        }
+      };
+    });
+  }
+
+  async function ingestScenario(file) {
+    if (!file) return;
+    if (!scenarioReview.open) scenarioReview.showModal();
+    const body = scenarioReview.querySelector('.review-body');
+    body.innerHTML = `<p>Extracting and routing facts from <b>${escapeHtml(file.name)}</b>â€¦</p>`;
+    try {
+      const pdfBase64 = await fileAsBase64(file);
+      const result = await api('/api/scenario', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, pdfBase64 }),
+      });
+      const labels = [['submarine', 'Submarine'], ['elint', 'ELINT'], ['air', 'Air'], ['humint', 'HUMINT']];
+      body.innerHTML = `<h2>${escapeHtml(result.scenario.title)}</h2>
+        <p>${escapeHtml(result.scenario.date)} Â· ${result.document.pageCount} pages Â· ${escapeHtml(result.document.parserMode.replace('_', ' '))}</p>
+        <p><b>Director brief:</b> ${escapeHtml(result.scenario.brief)}</p>
+        <p><b>Objective:</b> ${escapeHtml(result.scenario.objective)}</p>
+        <div class="scenario-silos">${labels.map(([key, label]) => `<details><summary>${label} dossier</summary><pre>${escapeHtml(result.scenario[key])}</pre></details>`).join('')}</div>
+        <button class="btn use-scenario" type="button">Use This Scenario</button>`;
+      body.querySelector('.use-scenario').onclick = () => {
+        currentScenario = result;
+        DOSSIERS = labels.map(([key]) => result.scenario[key]);
+        uploadButton.textContent = `PDF: ${result.scenario.title}`;
+        uploadButton.title = result.document.filename;
+        const briefing = document.querySelector('article');
+        if (briefing) {
+          const heading = briefing.querySelector('h2');
+          const paragraphs = briefing.querySelectorAll('p');
+          if (heading) heading.textContent = result.scenario.title;
+          if (paragraphs[0]) paragraphs[0].textContent = result.scenario.brief;
+          if (paragraphs.length > 1) paragraphs[paragraphs.length - 1].textContent = result.scenario.objective;
+        }
+        scenarioReview.close();
+        setMode('live');
+        q('#learn').textContent = `${result.scenario.title} loaded from ${result.document.filename}. Run Live Mission to begin.`;
+        toast('PDF scenario loaded and routed to four agents.');
+      };
+    } catch (error) {
+      body.innerHTML = `<p class="live-error">${escapeHtml(error.message)}</p><button class="btn retry-pdf" type="button">Choose Another PDF</button>`;
+      body.querySelector('.retry-pdf').onclick = showScenarioPicker;
+    }
+  }
+
   async function callAgent(payload) {
     const timeout = setTimeout(() => liveAbort.abort(), 120000);
     try {
@@ -157,7 +252,14 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           promptVersion: 'cold-war-pipeline-v2',
-          dossierManifest: DOSSIERS.map((_, index) => ({ silo: A[index][1], sourceType: 'embedded_text', attachmentIds: [] })),
+          dossierManifest: DOSSIERS.map((_, index) => ({
+            silo: A[index][1],
+            sourceType: currentScenario ? 'pdf_extracted' : 'embedded_text',
+            filename: currentScenario?.document.filename || null,
+            sha256: currentScenario?.document.sha256 || null,
+            pageCount: currentScenario?.document.pageCount || null,
+            attachmentIds: [],
+          })),
         }),
       });
       q('#learn').textContent = `Mission ${activeMission.runId} created. Four independent calls are running.`;
@@ -273,6 +375,15 @@
   q('#modeDemo').onclick = () => setMode('demo');
   q('#modeLive').onclick = () => setMode('live');
   resetButton.onclick = resetMission;
+  uploadButton.onclick = showScenarioPicker;
+  fileInput.onchange = () => { ingestScenario(fileInput.files?.[0]); fileInput.value = ''; };
+  document.addEventListener('dragover', (event) => {
+    if ([...(event.dataTransfer?.items || [])].some((item) => item.type === 'application/pdf')) event.preventDefault();
+  });
+  document.addEventListener('drop', (event) => {
+    const file = [...(event.dataTransfer?.files || [])].find((item) => item.type === 'application/pdf' || item.name.toLowerCase().endsWith('.pdf'));
+    if (file) { event.preventDefault(); ingestScenario(file); }
+  });
   historyButton.onclick = async () => {
     review.showModal();
     const body = review.querySelector('.review-body');

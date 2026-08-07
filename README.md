@@ -13,6 +13,14 @@ A Cold War strategic-crisis simulator built to teach multi-agent AI architecture
 
 ## Operating modes
 
+### PDF scenario missions
+
+Select **Load Scenario PDF** (or drop a PDF anywhere on the page), enter the private Live AI access code, and review the extracted scenario before selecting **Use This Scenario**. The server validates and extracts the PDF, then routes facts into isolated Submarine, ELINT, Air, and HUMINT dossiers. Those exact dossiers replace the built-in facts for the next 14-call Live AI mission.
+
+PDFs produced from the included scenario template use deterministic routing. Other text-based PDFs are routed by the configured model. The current limit is 3 MB. Image-only scans are rejected because OCR is not implemented yet. Uploaded bytes are processed transiently and are not stored; the mission ledger records the filename, page count, and SHA-256 fingerprint.
+
+Three ready-to-play PDFs are included under `output/pdf/` and are validated by the test suite.
+
 ### Demo — default
 
 Demo mode is deterministic and requires no API key. It presents the complete five-minute teaching pipeline and includes a skip-processing control.

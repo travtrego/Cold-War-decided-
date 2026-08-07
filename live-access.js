@@ -43,7 +43,7 @@
     if (!value) return false;
 
     try {
-      return ['/api/agent', '/api/missions', '/api/mission', '/api/evaluate'].includes(new URL(value, window.location.href).pathname);
+      return ['/api/agent', '/api/missions', '/api/mission', '/api/evaluate', '/api/scenario'].includes(new URL(value, window.location.href).pathname);
     } catch {
       return false;
     }

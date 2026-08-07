@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import agentHandler from '../api/agent.js';
 import healthHandler from '../api/health.js';
+import scenarioHandler from '../api/scenario.js';
 
 function createResponse() {
   return {
@@ -90,6 +92,21 @@ try {
     await healthHandler({ method: 'GET' }, response);
     assert.equal(response.statusCode, 200);
     assert.equal(response.body.liveAI, true);
+  }
+
+  {
+    const pdf = await readFile(new URL('../output/pdf/operation-northern-glass.pdf', import.meta.url));
+    const response = createResponse();
+    await scenarioHandler({
+      method: 'POST',
+      headers: { 'x-live-ai-access-code': 'correct-horse-battery-staple' },
+      body: { filename: 'operation-northern-glass.pdf', pdfBase64: pdf.toString('base64') },
+    }, response);
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body.document.parserMode, 'verified_template');
+    assert.equal(response.body.document.pageCount, 3);
+    assert.equal(response.body.scenario.title, 'OPERATION NORTHERN GLASS');
+    assert.match(response.body.scenario.submarine, /no access to ELINT/i);
   }
 
   let upstreamCalls = 0;
