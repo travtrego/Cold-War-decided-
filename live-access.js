@@ -38,19 +38,19 @@
     return code;
   }
 
-  function isAgentRequest(input) {
+  function isProtectedRequest(input) {
     const value = typeof input === 'string' ? input : input?.url;
     if (!value) return false;
 
     try {
-      return new URL(value, window.location.href).pathname === '/api/agent';
+      return ['/api/agent', '/api/missions', '/api/mission', '/api/evaluate'].includes(new URL(value, window.location.href).pathname);
     } catch {
       return false;
     }
   }
 
   window.fetch = async (input, init = {}) => {
-    if (!isAgentRequest(input)) return nativeFetch(input, init);
+    if (!isProtectedRequest(input)) return nativeFetch(input, init);
 
     const accessCode = requestCode();
     if (!accessCode) {

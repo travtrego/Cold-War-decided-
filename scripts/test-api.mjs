@@ -29,6 +29,8 @@ function createResponse() {
 const originalKey = process.env.OPENAI_API_KEY;
 const originalAccessCode = process.env.LIVE_AI_ACCESS_CODE;
 const originalFetch = globalThis.fetch;
+const originalNodeEnv = process.env.NODE_ENV;
+const originalDatabaseUrl = process.env.DATABASE_URL;
 
 delete process.env.OPENAI_API_KEY;
 delete process.env.LIVE_AI_ACCESS_CODE;
@@ -77,6 +79,11 @@ try {
 
   process.env.OPENAI_API_KEY = 'test-key';
   process.env.LIVE_AI_ACCESS_CODE = 'correct-horse-battery-staple';
+  process.env.DATABASE_URL = 'postgresql://test';
+  process.env.NODE_ENV = 'test';
+  globalThis.__MISSION_SQL__ = async (strings) => String(strings[0]).includes('SELECT run_id')
+    ? [{ run_id: 'run_test' }]
+    : [];
 
   {
     const response = createResponse();
@@ -101,6 +108,10 @@ try {
           stage: 'specialist_initial',
           role: 'Submarine Analyst',
           dossier: 'Test evidence',
+          missionId: 'msn_test',
+          runId: 'run_test',
+          requestId: 'req_test',
+          sequence: 1,
         },
       },
       response,
@@ -156,6 +167,10 @@ try {
           stage: 'specialist_initial',
           role: 'Submarine Analyst',
           dossier: 'Test evidence',
+          missionId: 'msn_test',
+          runId: 'run_test',
+          requestId: 'req_success',
+          sequence: 1,
         },
       },
       response,
@@ -174,5 +189,11 @@ try {
   if (originalAccessCode === undefined) delete process.env.LIVE_AI_ACCESS_CODE;
   else process.env.LIVE_AI_ACCESS_CODE = originalAccessCode;
 
+  if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+  else process.env.DATABASE_URL = originalDatabaseUrl;
+
   globalThis.fetch = originalFetch;
+  delete globalThis.__MISSION_SQL__;
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = originalNodeEnv;
 }

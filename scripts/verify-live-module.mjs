@@ -62,14 +62,16 @@ for (const symbol of requiredBaseSymbols) {
 
 const requiredLiveMarkers = [
   "fetch('/api/health'",
-  "fetch('/api/agent'",
+  "api('/api/agent'",
+  "api('/api/missions'",
+  "api('/api/evaluate'",
   'Promise.all(A.map',
   "stage: 'specialist_initial'",
   "stage: 'chief_feedback'",
   "stage: 'specialist_revision'",
   "stage: 'counterintelligence'",
   "stage: 'chief_final'",
-  'OPENAI_API_KEY',
+  'cold-war-pipeline-v2',
 ];
 
 for (const marker of requiredLiveMarkers) {

@@ -11,6 +11,7 @@
   let mode = 'demo';
   let liveAvailable = false;
   let liveAbort = null;
+  let activeMission = null;
 
   const controls = q('.controls');
   const modeSwitch = document.createElement('div');
@@ -25,6 +26,18 @@
   resetButton.type = 'button';
   resetButton.textContent = 'Reset';
   controls.insertBefore(resetButton, q('#run'));
+
+  const historyButton = document.createElement('button');
+  historyButton.className = 'btn';
+  historyButton.type = 'button';
+  historyButton.textContent = 'Run History';
+  controls.insertBefore(historyButton, resetButton);
+
+  const review = document.createElement('dialog');
+  review.className = 'run-review';
+  review.innerHTML = '<header><b>MISSION RUN HISTORY</b><button type="button" aria-label="Close">Ã—</button></header><div class="review-body"><p>Loading mission ledgerâ€¦</p></div>';
+  document.body.appendChild(review);
+  review.querySelector('header button').onclick = () => review.close();
 
   const finalCard = q('#final');
   const finalConfidence = finalCard.querySelector('.confidence');
@@ -105,17 +118,22 @@
     finalRecommendation.textContent = report.recommended_action || 'Continue monitoring.';
   }
 
+  async function api(path, options = {}) {
+    const response = await fetch(path, options);
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+    return body;
+  }
+
   async function callAgent(payload) {
     const timeout = setTimeout(() => liveAbort.abort(), 120000);
     try {
-      const response = await fetch('/api/agent', {
+      const body = await api('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, ...activeMission, requestId: crypto.randomUUID() }),
         signal: liveAbort.signal,
       });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || `Agent request failed (${response.status})`);
       return body.report;
     } finally {
       clearTimeout(timeout);
@@ -134,12 +152,22 @@
     q('#learn').textContent = 'Parallel execution: four independent model calls are running now.';
 
     try {
+      activeMission = await api('/api/missions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          promptVersion: 'cold-war-pipeline-v2',
+          dossierManifest: DOSSIERS.map((_, index) => ({ silo: A[index][1], sourceType: 'embedded_text', attachmentIds: [] })),
+        }),
+      });
+      q('#learn').textContent = `Mission ${activeMission.runId} created. Four independent calls are running.`;
       let completed = 0;
       const initial = await Promise.all(A.map(async (agent, index) => {
         const report = await callAgent({
           stage: 'specialist_initial',
           role: agent[1],
           dossier: DOSSIERS[index],
+          sequence: index + 1,
         });
         completed += 1;
         setNode(index, 'done', 45);
@@ -154,6 +182,7 @@
         stage: 'chief_feedback',
         role: 'Chief Agent',
         context: JSON.stringify({ specialist: A[index][1], initialReport: report }),
+        sequence: index + 5,
       })));
 
       stage('#chief', 'done');
@@ -167,6 +196,7 @@
           dossier: DOSSIERS[index],
           context: JSON.stringify(report),
           feedback,
+          sequence: index + 9,
         });
         setNode(index, 'done', 100);
         renderPaper(index, revision, 'Revised');
@@ -180,6 +210,7 @@
         stage: 'counterintelligence',
         role: 'Counterintelligence Agent',
         context: JSON.stringify({ revisedReports: revised }),
+        sequence: 13,
       });
 
       stage('#red', 'done');
@@ -194,7 +225,15 @@
           counterintelligenceReview: counterintelligence,
           playerActions: acts.map((action) => ({ id: action[0], action: action[1] })),
         }),
+        sequence: 14,
       });
+
+      const evaluation = await api('/api/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ missionId: activeMission.missionId }),
+      });
+      q('#learn').textContent = `Automated QC: ${evaluation.overall}/100. Human authorization remains required.`;
 
       stage('#synth', 'done');
       finishLive(finalReport);
@@ -234,6 +273,36 @@
   q('#modeDemo').onclick = () => setMode('demo');
   q('#modeLive').onclick = () => setMode('live');
   resetButton.onclick = resetMission;
+  historyButton.onclick = async () => {
+    review.showModal();
+    const body = review.querySelector('.review-body');
+    body.innerHTML = '<p>Loading mission ledgerâ€¦</p>';
+    try {
+      const data = await api('/api/missions');
+      if (!data.missions.length) body.innerHTML = '<p>No live mission runs have been recorded yet.</p>';
+      else body.innerHTML = `<div class="run-list">${data.missions.map((mission) => `
+        <button type="button" data-id="${escapeHtml(mission.id)}">
+          <b>${escapeHtml(mission.run_id)}</b><span>${escapeHtml(mission.status)} Â· ${new Date(mission.started_at).toLocaleString()}</span>
+          <small>${mission.total_input_tokens + mission.total_output_tokens} tokens Â· $${Number(mission.estimated_cost_usd).toFixed(4)} Â· ${mission.total_retries} retries</small>
+        </button>`).join('')}</div>`;
+      body.querySelectorAll('[data-id]').forEach((button) => { button.onclick = () => loadReview(button.dataset.id); });
+    } catch (error) { body.innerHTML = `<p>${escapeHtml(error.message)}</p>`; }
+  };
+
+  async function loadReview(missionId) {
+    const body = review.querySelector('.review-body');
+    body.innerHTML = '<p>Loading run reviewâ€¦</p>';
+    try {
+      const data = await api(`/api/mission?id=${encodeURIComponent(missionId)}`);
+      const evaluation = data.evaluation;
+      body.innerHTML = `<button class="back" type="button">â† All runs</button>
+        <h2>${escapeHtml(data.mission.run_id)}</h2>
+        <p>${escapeHtml(data.mission.prompt_version)} Â· ${escapeHtml(data.mission.model_requested)} Â· ${data.reports.length}/14 reports</p>
+        ${evaluation ? `<section class="score"><b>Automated QC ${evaluation.overall_score}/100</b>${Object.entries(evaluation.scores).map(([key, value]) => `<span>${escapeHtml(key.replaceAll('_', ' '))}: ${value}</span>`).join('')}</section>` : '<p>Evaluation pending.</p>'}
+        <div class="report-list">${data.reports.map((item) => `<details><summary>#${item.sequence} ${escapeHtml(item.stage)} Â· ${escapeHtml(item.role)} <small>${item.latency_ms}ms Â· ${item.input_tokens + item.output_tokens} tokens Â· $${Number(item.estimated_cost_usd).toFixed(5)}</small></summary><pre>${escapeHtml(JSON.stringify(item.report, null, 2))}</pre></details>`).join('')}</div>`;
+      body.querySelector('.back').onclick = () => historyButton.click();
+    } catch (error) { body.innerHTML = `<p>${escapeHtml(error.message)}</p>`; }
+  }
   q('#run').onclick = () => {
     resetMission();
     if (mode === 'live') startLive();

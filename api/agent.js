@@ -1,4 +1,5 @@
-import { timingSafeEqual } from 'node:crypto';
+import { accessCodeMatches } from './_auth.js';
+import { getSql, id, safeJson } from './_db.js';
 
 const ALLOWED_STAGES = new Set([
   'specialist_initial',
@@ -11,6 +12,8 @@ const ALLOWED_STAGES = new Set([
 const MAX_DOSSIER_CHARS = 40_000;
 const MAX_CONTEXT_CHARS = 80_000;
 const MAX_ACCESS_CODE_CHARS = 256;
+const PROMPT_VERSION = 'cold-war-pipeline-v2';
+const PRICE_PER_MILLION = { input: 0.25, output: 2.0 };
 
 const REPORT_SCHEMA = {
   type: 'object',
@@ -52,22 +55,6 @@ function text(value, maxLength) {
   return value.slice(0, maxLength);
 }
 
-function headerValue(request, name) {
-  const value = request.headers?.[name];
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function accessCodeMatches(request) {
-  const expected = process.env.LIVE_AI_ACCESS_CODE || '';
-  const provided = text(headerValue(request, 'x-live-ai-access-code'), MAX_ACCESS_CODE_CHARS);
-  if (!expected || !provided) return false;
-
-  const expectedBytes = Buffer.from(expected);
-  const providedBytes = Buffer.from(provided);
-  if (expectedBytes.length !== providedBytes.length) return false;
-  return timingSafeEqual(expectedBytes, providedBytes);
-}
-
 function buildInstructions(stage, role) {
   const common = [
     'You are operating inside a fictional Cold War intelligence training simulator.',
@@ -77,7 +64,17 @@ function buildInstructions(stage, role) {
     'Return concise, auditable reasoning summaries rather than private chain-of-thought.',
     'Keep every string concise so the entire JSON response fits within the output limit.',
     'Use an empty string for recommended_action when the current stage should not recommend a player action.',
+    `Prompt doctrine version: ${PROMPT_VERSION}.`,
   ];
+
+  const roleDoctrines = {
+    'Submarine Analyst': 'Checklist: track continuity; acoustic alternatives; geography; intent versus capability; missing distress indicators. Never treat lost contact alone as proof of attack.',
+    'ELINT Analyst': 'Checklist: emitter identity; mode and timing; target-lock evidence; spoofing or calibration; historical baseline. Separate signal match from operational intent.',
+    'Air Intelligence Analyst': 'Checklist: track geometry; intercept behavior; payload identification limits; imagery quality; live-versus-inert payload. Never infer nuclear status from silhouette alone.',
+    'HUMINT Analyst': 'Checklist: access; reliability; corroboration; coercion; source independence; contamination; deception motive. Weight each source separately.',
+    'Counterintelligence Agent': 'Checklist: deception hypotheses; circular reporting; shared-source dependency; groupthink; contradictions; innocent alternatives; confidence inflation.',
+    'Chief Agent': 'Checklist: preserve dissent; compare independent streams; avoid double-counting; resolve contradictions explicitly; calibrate confidence; recommend a reversible action when uncertainty is high.',
+  };
 
   const stageInstructions = {
     specialist_initial: 'Produce an independent initial report from your assigned evidence silo. Do not infer what other specialists may have seen.',
@@ -87,7 +84,7 @@ function buildInstructions(stage, role) {
     chief_final: 'Act as the Chief Agent. Read the Counterintelligence review before forming an independent final synthesis, confidence score, and one recommended player action.',
   };
 
-  return [...common, `Assigned role: ${role}.`, stageInstructions[stage]].join('\n');
+  return [...common, `Assigned role: ${role}.`, roleDoctrines[role] || roleDoctrines['Chief Agent'], stageInstructions[stage]].join('\n');
 }
 
 function extractOutputText(payload) {
@@ -170,9 +167,16 @@ export default async function handler(request, response) {
   const dossier = text(body.dossier, MAX_DOSSIER_CHARS);
   const context = text(body.context, MAX_CONTEXT_CHARS);
   const feedback = text(body.feedback, 20_000);
+  const missionId = text(body.missionId, 80);
+  const runId = text(body.runId, 80);
+  const requestId = text(body.requestId, 80);
+  const sequence = Number(body.sequence);
 
   if (!dossier && !context) {
     return jsonResponse(response, 400, { error: 'A dossier or structured context is required.' });
+  }
+  if (!missionId || !runId || !requestId || !Number.isInteger(sequence) || sequence < 1 || sequence > 14) {
+    return jsonResponse(response, 400, { error: 'Valid mission, run, request, and sequence identifiers are required.' });
   }
 
   const input = [
@@ -184,6 +188,8 @@ export default async function handler(request, response) {
   ].join('\n');
 
   try {
+    const started = Date.now();
+    let retries = 0;
     let payload = await requestReport({ stage, role, input, maxOutputTokens: 2200 });
     let report;
 
@@ -191,16 +197,41 @@ export default async function handler(request, response) {
       report = parseReport(payload);
     } catch (error) {
       if (!error.isTruncatedModelJson) throw error;
+      retries = 1;
       console.warn('Retrying truncated structured response', { stage, role, responseId: payload.id });
       payload = await requestReport({ stage, role, input, maxOutputTokens: 4000 });
       report = parseReport(payload);
     }
+
+    const latencyMs = Date.now() - started;
+    const inputTokens = Number(payload.usage?.input_tokens || 0);
+    const outputTokens = Number(payload.usage?.output_tokens || 0);
+    const estimatedCostUsd = (inputTokens * PRICE_PER_MILLION.input + outputTokens * PRICE_PER_MILLION.output) / 1_000_000;
+    const sql = getSql();
+    const stored = await sql`SELECT run_id FROM missions WHERE id = ${missionId}`;
+    if (!stored.length || stored[0].run_id !== runId) return jsonResponse(response, 409, { error: 'Mission/run identifier mismatch.' });
+    await sql`INSERT INTO reports (id, mission_id, request_id, sequence, stage, role, prompt_version, model, response_id,
+      report, latency_ms, input_tokens, output_tokens, retries, estimated_cost_usd)
+      VALUES (${id('rpt')}, ${missionId}, ${requestId}, ${sequence}, ${stage}, ${role}, ${PROMPT_VERSION},
+      ${payload.model || process.env.OPENAI_MODEL || 'gpt-5-mini'}, ${payload.id || null}, ${safeJson(report)}::jsonb,
+      ${latencyMs}, ${inputTokens}, ${outputTokens}, ${retries}, ${estimatedCostUsd})
+      ON CONFLICT (mission_id, request_id) DO NOTHING`;
+    await sql`UPDATE missions SET total_latency_ms = total_latency_ms + ${latencyMs},
+      total_input_tokens = total_input_tokens + ${inputTokens}, total_output_tokens = total_output_tokens + ${outputTokens},
+      total_retries = total_retries + ${retries}, estimated_cost_usd = estimated_cost_usd + ${estimatedCostUsd}
+      WHERE id = ${missionId}`;
 
     return jsonResponse(response, 200, {
       report,
       model: payload.model,
       responseId: payload.id,
       usage: payload.usage ?? null,
+      missionId,
+      runId,
+      requestId,
+      sequence,
+      promptVersion: PROMPT_VERSION,
+      metrics: { latencyMs, retries, estimatedCostUsd },
     });
   } catch (error) {
     console.error('Agent endpoint failure', error);

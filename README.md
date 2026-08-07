@@ -27,15 +27,32 @@ Live AI uses the same visible architecture but executes separate model requests 
 4. One Counterintelligence review
 5. One final Chief synthesis
 
-That is **14 model requests per complete live run**. The interface keeps Live AI locked until the server reports that it is fully configured.
+That is **14 model requests per complete live run**. Every live call is written to an immutable mission ledger before the UI advances. The interface keeps Live AI locked until OpenAI, access protection, and the database are configured.
 
 Set these Vercel environment variables to enable it:
 
 - `OPENAI_API_KEY` — required; remains server-side
 - `LIVE_AI_ACCESS_CODE` — required; use a long random passphrase that only you know
 - `OPENAI_MODEL` — optional; defaults to `gpt-5-mini`
+- `DATABASE_URL` — required; a server-only Neon Postgres connection string
+
+Never expose the API key, access code, or database URL in browser code.
 
 When Live AI is selected, the browser asks for the access code and keeps it only in that tab's session storage. The code is sent to `/api/agent` in a request header. The server rejects missing or incorrect codes **before** making a paid OpenAI request.
+
+## Mission ledger and review
+
+Each run receives a mission ID and run ID. The database preserves all 14 outputs in order: four initial reports, four Chief feedback packets, four revisions, the Counterintelligence report, and final synthesis. Each record includes prompt doctrine version, model, response ID, latency, token usage, retries, and estimated cost. The protected Run History interface provides audit/review details and evaluator scores for evidence use, specialization, calibration, contradiction detection, clarity, revision quality, and independence.
+
+Cost is an estimate based on constants in `api/agent.js`; update them when model pricing changes. The reproducible rule evaluator is quality-control assistance, not a replacement for human review.
+
+The schema includes a dossier manifest with source types and reserved attachment IDs. This prepares provenance for later PDF upload; upload, extraction, malware scanning, and private file storage are intentionally not implemented yet.
+
+Apply the database migration before deploying:
+
+```bash
+npm run migrate
+```
 
 ## Architecture
 
