@@ -8,10 +8,14 @@
 
   const demoRun = run;
   const demoFinish = finish;
+  const demoDecide = decide;
+  const demoAarHtml = q('#aar').innerHTML;
   let mode = 'demo';
   let liveAvailable = false;
   let liveAbort = null;
   let activeMission = null;
+  let activeEvaluation = null;
+  let activeFinalReport = null;
   let currentScenario = null;
 
   const controls = q('.controls');
@@ -106,6 +110,9 @@
     finalCard.classList.remove('show');
     q('#decision').hidden = true;
     q('#aar').classList.remove('show');
+    q('#aar').innerHTML = demoAarHtml;
+    activeEvaluation = null;
+    activeFinalReport = null;
     qa('.action').forEach((action) => { action.disabled = false; });
     A.forEach((_, index) => {
       setNode(index, '', 0);
@@ -343,6 +350,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ missionId: activeMission.missionId }),
       });
+      activeEvaluation = evaluation;
       q('#learn').textContent = `Automated QC: ${evaluation.overall}/100. Human authorization remains required.`;
 
       stage('#synth', 'done');
@@ -372,12 +380,35 @@
     q('#count').textContent = '4 / 4';
     q('#ci').textContent = 'COMPLETE';
     renderFinal(report);
+    activeFinalReport = report;
     q('#sealed').style.display = 'none';
     finalCard.classList.add('show');
     q('#decision').hidden = false;
     q('#learn').textContent = 'Human oversight: the agents stop at a recommendation. You authorize the action.';
     tab('ops');
     toast('Live Chief briefing unlocked.');
+  }
+
+  function decideLive(id) {
+    qa('.action').forEach((action) => { action.disabled = true; });
+    const recommendation = String(activeFinalReport?.recommended_action || '').toLowerCase();
+    const recommendedAction = acts.find((action) => recommendation.includes(String(action[1]).toLowerCase()));
+    const aligned = recommendedAction?.[0] === id;
+    const outcome = q('#outcome');
+    outcome.textContent = recommendedAction
+      ? (aligned ? 'DECISION ALIGNS WITH CHIEF' : 'DECISION DIFFERS FROM CHIEF')
+      : 'DECISION RECORDED';
+    outcome.style.color = aligned ? 'var(--green)' : 'var(--amber)';
+    const score = q('#aar .score');
+    if (score) score.textContent = activeEvaluation ? `${activeEvaluation.overall} / 100 QC` : 'QC PENDING';
+    const summary = q('#aar > p');
+    if (summary) summary.textContent = (activeEvaluation?.findings || []).join(' ')
+      || 'This live run has no automated evaluation summary.';
+    const truth = q('#aar .truth');
+    if (truth) truth.innerHTML = `<span class="kicker">LIVE RUN // NO SCRIPTED ANSWER KEY</span><h3>${escapeHtml(currentScenario?.scenario?.title || 'Original live scenario')}</h3><p>The system records whether your choice matched the Chief recommendation. It does not label the Chief or player objectively correct without a scenario-specific adjudication key.</p>`;
+    q('#aar').classList.add('show');
+    q('#aar').scrollIntoView({ behavior: 'smooth' });
+    toast('Live decision recorded.');
   }
 
   q('#modeDemo').onclick = () => setMode('demo');
@@ -430,6 +461,12 @@
   q('#skip').onclick = () => {
     if (mode === 'demo') demoFinish();
   };
+  qa('.action').forEach((button) => {
+    button.onclick = () => {
+      if (mode === 'live') decideLive(button.dataset.id);
+      else demoDecide(button.dataset.id);
+    };
+  });
 
   fetch('/api/health', { cache: 'no-store' })
     .then((response) => response.json().then((body) => ({ response, body })))

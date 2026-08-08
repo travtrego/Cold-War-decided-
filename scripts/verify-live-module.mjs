@@ -74,6 +74,8 @@ const requiredLiveMarkers = [
   'cold-war-pipeline-v4-decisive-chief',
   'activeFileValue.textContent = result.scenario.title',
   'missionDateValue.textContent = result.scenario.date',
+  'DECISION ALIGNS WITH CHIEF',
+  'LIVE RUN // NO SCRIPTED ANSWER KEY',
 ];
 
 for (const marker of requiredLiveMarkers) {
