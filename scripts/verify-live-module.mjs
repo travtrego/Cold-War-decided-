@@ -72,6 +72,8 @@ const requiredLiveMarkers = [
   "stage: 'counterintelligence'",
   "stage: 'chief_final'",
   'cold-war-pipeline-v4-decisive-chief',
+  'activeFileValue.textContent = result.scenario.title',
+  'missionDateValue.textContent = result.scenario.date',
 ];
 
 for (const marker of requiredLiveMarkers) {

@@ -63,6 +63,9 @@
   const finalAssessment = finalCard.querySelector('.lead');
   const finalLists = finalCard.querySelectorAll('.findings ul');
   const finalRecommendation = finalCard.querySelector('.rec b');
+  const missionStripValues = qa('.strip strong');
+  const activeFileValue = missionStripValues[0];
+  const missionDateValue = missionStripValues[1];
 
   function escapeHtml(value = '') {
     return String(value).replace(/[&<>'"]/g, (character) => ({
@@ -204,6 +207,8 @@
         DOSSIERS = labels.map(([key]) => result.scenario[key]);
         uploadButton.textContent = `PDF: ${result.scenario.title}`;
         uploadButton.title = result.document.filename;
+        if (activeFileValue) activeFileValue.textContent = result.scenario.title;
+        if (missionDateValue) missionDateValue.textContent = result.scenario.date;
         const briefing = document.querySelector('article');
         if (briefing) {
           const heading = briefing.querySelector('h2');
