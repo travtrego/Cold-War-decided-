@@ -10,7 +10,7 @@ export default async function handler(request, response) {
     if (request.method === 'POST') {
       const missionId = id('msn');
       const runId = id('run');
-      const promptVersion = String(request.body?.promptVersion || 'cold-war-pipeline-v4-decisive-chief').slice(0, 80);
+      const promptVersion = String(request.body?.promptVersion || 'cold-war-pipeline-v5-action-thresholds').slice(0, 80);
       const model = String(process.env.OPENAI_MODEL || 'gpt-5-mini').slice(0, 100);
       const manifest = Array.isArray(request.body?.dossierManifest) ? request.body.dossierManifest.slice(0, 20) : [];
       await sql`INSERT INTO missions (id, run_id, prompt_version, model_requested, dossier_manifest)

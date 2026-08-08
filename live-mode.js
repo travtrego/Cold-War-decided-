@@ -266,7 +266,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          promptVersion: 'cold-war-pipeline-v4-decisive-chief',
+          promptVersion: 'cold-war-pipeline-v5-action-thresholds',
           dossierManifest: DOSSIERS.map((_, index) => ({
             silo: A[index][1],
             sourceType: currentScenario ? 'pdf_extracted' : 'embedded_text',
@@ -392,20 +392,25 @@
   function decideLive(id) {
     qa('.action').forEach((action) => { action.disabled = true; });
     const recommendation = String(activeFinalReport?.recommended_action || '').toLowerCase();
-    const recommendedAction = acts.find((action) => recommendation.includes(String(action[1]).toLowerCase()));
+    const primaryRecommendation = recommendation.match(/primary action:\s*(.*?)(?:\.?\s*why:|$)/)?.[1] || recommendation;
+    const recommendedAction = acts.find((action) => primaryRecommendation.includes(String(action[1]).toLowerCase()));
     const aligned = recommendedAction?.[0] === id;
+    const expectedActionId = activeEvaluation?.adjudication?.expectedActionId;
+    const adjudicated = Boolean(expectedActionId);
+    const correct = adjudicated && expectedActionId === id;
     const outcome = q('#outcome');
-    outcome.textContent = recommendedAction
-      ? (aligned ? 'DECISION ALIGNS WITH CHIEF' : 'DECISION DIFFERS FROM CHIEF')
-      : 'DECISION RECORDED';
-    outcome.style.color = aligned ? 'var(--green)' : 'var(--amber)';
+    outcome.textContent = adjudicated
+      ? (correct ? 'CORRECT DECISION' : 'INCORRECT DECISION')
+      : (recommendedAction ? (aligned ? 'DECISION ALIGNS WITH CHIEF' : 'DECISION DIFFERS FROM CHIEF') : 'DECISION RECORDED');
+    outcome.style.color = adjudicated ? (correct ? 'var(--green)' : 'var(--red)') : (aligned ? 'var(--green)' : 'var(--amber)');
     const score = q('#aar .score');
     if (score) score.textContent = activeEvaluation ? `${activeEvaluation.overall} / 100 QC` : 'QC PENDING';
     const summary = q('#aar > p');
-    if (summary) summary.textContent = (activeEvaluation?.findings || []).join(' ')
-      || 'This live run has no automated evaluation summary.';
+    if (summary) summary.textContent = `${recommendedAction ? `Your choice ${aligned ? 'aligned with' : 'differed from'} the Chief. ` : ''}${(activeEvaluation?.findings || []).join(' ') || 'This live run has no automated evaluation summary.'}`;
     const truth = q('#aar .truth');
-    if (truth) truth.innerHTML = `<span class="kicker">LIVE RUN // NO SCRIPTED ANSWER KEY</span><h3>${escapeHtml(currentScenario?.scenario?.title || 'Original live scenario')}</h3><p>The system records whether your choice matched the Chief recommendation. It does not label the Chief or player objectively correct without a scenario-specific adjudication key.</p>`;
+    if (truth) truth.innerHTML = activeEvaluation?.adjudication
+      ? `<span class="kicker">SCENARIO ADJUDICATION</span><h3>${escapeHtml(activeEvaluation.adjudication.expectedActionId)}: ${escapeHtml(activeEvaluation.adjudication.expectedActionLabel)}</h3><p>${escapeHtml(activeEvaluation.adjudication.rationale)}</p>`
+      : `<span class="kicker">LIVE RUN // NO SCRIPTED ANSWER KEY</span><h3>${escapeHtml(currentScenario?.scenario?.title || 'Uploaded scenario')}</h3><p>This uploaded scenario has no adjudication key, so the system records alignment with the Chief without claiming objective correctness.</p>`;
     q('#aar').classList.add('show');
     q('#aar').scrollIntoView({ behavior: 'smooth' });
     toast('Live decision recorded.');

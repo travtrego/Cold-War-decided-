@@ -71,11 +71,12 @@ const requiredLiveMarkers = [
   "stage: 'specialist_revision'",
   "stage: 'counterintelligence'",
   "stage: 'chief_final'",
-  'cold-war-pipeline-v4-decisive-chief',
+  'cold-war-pipeline-v5-action-thresholds',
   'activeFileValue.textContent = result.scenario.title',
   'missionDateValue.textContent = result.scenario.date',
   'DECISION ALIGNS WITH CHIEF',
   'LIVE RUN // NO SCRIPTED ANSWER KEY',
+  'SCENARIO ADJUDICATION',
 ];
 
 for (const marker of requiredLiveMarkers) {

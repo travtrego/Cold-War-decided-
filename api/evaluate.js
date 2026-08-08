@@ -1,8 +1,30 @@
 import { requireAccess } from './_auth.js';
 import { getSql, id, safeJson } from './_db.js';
 
-const VERSION = 'rule-evaluator-v3-decision-quality';
+const VERSION = 'rule-evaluator-v4-adjudicated-decisions';
 const clamp = (n) => Math.max(0, Math.min(100, Math.round(n)));
+
+const ACTIONS = {
+  A: 'Keep monitoring',
+  B: 'Quietly raise readiness',
+  C: 'Issue a full NATO alert',
+  D: 'Intercept the aircraft',
+  E: 'Launch a covert operation',
+  F: 'Launch the Ultimate NATO Naval Fleet of Doom',
+};
+
+const ADJUDICATIONS = {
+  __default__: { actionId: 'B', rationale: 'Multiple concerning streams justify reversible readiness, but the evidence does not establish an imminent strategic attack.' },
+  'operation-northern-glass.pdf': { actionId: 'A', rationale: 'Ambiguous exercise activity, shared-source risk, no sovereign-airspace violation, and no confirmed seabed interference remain below the readiness-escalation threshold.' },
+  'operation-amber-circuit.pdf': { actionId: 'E', rationale: 'A specific possible rogue command network can be quietly tested and contained without degrading NATO warning coverage or publicly escalating.' },
+  'operation-copper-lantern.pdf': { actionId: 'E', rationale: 'A bounded clandestine transfer or counterintelligence trap is best verified and contained through a targeted covert operation rather than broad military escalation.' },
+};
+
+function actionIdFromRecommendation(value = '') {
+  const normalized = String(value).toLowerCase();
+  const primaryAction = normalized.match(/primary action:\s*(.*?)(?:\.?\s*why:|$)/)?.[1] || normalized;
+  return Object.entries(ACTIONS).find(([id, label]) => primaryAction.includes(label.toLowerCase()) || primaryAction.includes(`option ${id.toLowerCase()}`))?.[0] || null;
+}
 
 const BENCHMARKS = {
   'operation-northern-glass.pdf': [
@@ -51,6 +73,9 @@ export function evaluate(reports, filename = '') {
     && /\bWHY:\s*\S/i.test(recommendation)
     && /\bAVOID:\s*\S/i.test(recommendation)
     && /\bRECONSIDER IF:\s*\S/i.test(recommendation);
+  const scenarioKey = String(filename || '').toLowerCase() || '__default__';
+  const answer = ADJUDICATIONS[scenarioKey];
+  const chiefActionId = actionIdFromRecommendation(recommendation);
   const scores = {
     evidence_use: clamp(30 + citationRate * 60 + Math.min(10, evidence.length)),
     specialization: clamp(40 + new Set(reports.slice(0, 12).map((r) => r.role)).size * 12),
@@ -61,6 +86,7 @@ export function evaluate(reports, filename = '') {
     independence: clamp(30 + new Set(initials.map((r) => r.role)).size * 10 + coverage(alternatives.length) * 30),
     decision_quality: clearDecision ? 100 : 20,
   };
+  if (answer) scores.decision_accuracy = chiefActionId === answer.actionId ? 100 : 0;
   if (benchmark) scores.benchmark_coverage = clamp(benchmarkHits.length / benchmark.length * 100);
   const overall = clamp(Object.values(scores).reduce((a, b) => a + b, 0) / Object.keys(scores).length);
   const findings = [
@@ -75,8 +101,22 @@ export function evaluate(reports, filename = '') {
       ? 'The Chief gives one explicit primary action, rationale, avoided action, and reconsideration triggers.'
       : 'The Chief recommendation is not decision-ready; it must state one primary action, rationale, avoided action, and reconsideration triggers.',
   ];
+  if (answer) findings.push(chiefActionId === answer.actionId
+    ? `The Chief selected the scenario-adjudicated action (${answer.actionId}: ${ACTIONS[answer.actionId]}).`
+    : `The Chief selected ${chiefActionId || 'no recognized action'}; the scenario-adjudicated action is ${answer.actionId}: ${ACTIONS[answer.actionId]}.`);
   if (benchmark) findings.push(`${benchmarkHits.length}/${benchmark.length} scenario-specific reasoning traps were addressed by Counterintelligence or the final Chief.`);
-  return { scores, overall, findings };
+  return {
+    scores,
+    overall,
+    findings,
+    adjudication: answer ? {
+      expectedActionId: answer.actionId,
+      expectedActionLabel: ACTIONS[answer.actionId],
+      rationale: answer.rationale,
+      chiefActionId,
+      chiefMatched: chiefActionId === answer.actionId,
+    } : null,
+  };
 }
 
 export default async function handler(request, response) {

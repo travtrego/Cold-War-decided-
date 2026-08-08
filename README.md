@@ -23,7 +23,7 @@ Three ready-to-play PDFs are included under `output/pdf/` and are validated by t
 
 ### Evidence-discipline doctrine
 
-Prompt version `cold-war-pipeline-v4-decisive-chief` requires every report to separate observations, inferences, and assumptions; cite pages or source labels; provide at least two competing hypotheses; and explain the evidence behind confidence changes. It also requires the final Chief to state one primary action, why it is warranted, what to avoid, and the observable triggers for reconsideration. The evaluator measures compliance, decision quality, and scenario-specific benchmark coverage for the three included PDFs. Benchmark expectations are applied only to Counterintelligence and the final Chief, so merely repeating dossier facts does not earn credit.
+Prompt version `cold-war-pipeline-v5-action-thresholds` requires every report to separate observations, inferences, and assumptions; cite pages or source labels; provide at least two competing hypotheses; and explain the evidence behind confidence changes. The Chief must compare the supplied player actions against explicit escalation thresholds instead of defaulting to quiet readiness. The evaluator separately scores decision formatting, scenario-adjudicated decision accuracy, and scenario-specific reasoning coverage. Arbitrary uploaded PDFs receive analytical QC and Chief-alignment feedback but no objective decision score unless an adjudication key is added server-side.
 
 ### Demo — default
 
